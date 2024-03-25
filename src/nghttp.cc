@@ -46,6 +46,7 @@
 #include <iomanip>
 #include <sstream>
 #include <tuple>
+#include <fstream>
 
 #include <openssl/err.h>
 
@@ -64,6 +65,15 @@
 #ifndef O_BINARY
 #  define O_BINARY (0)
 #endif // O_BINARY
+
+namespace {
+std::ofstream keylog_file;
+void keylog_callback(const SSL *ssl, const char *line) {
+  keylog_file.write(line, strlen(line));
+  keylog_file.put('\n');
+  keylog_file.flush();
+}
+} // namespace
 
 namespace nghttp2 {
 
@@ -2311,6 +2321,14 @@ int communicate(
     auto proto_list = util::get_default_alpn();
 
     SSL_CTX_set_alpn_protos(ssl_ctx, proto_list.data(), proto_list.size());
+    auto keylog_filename = getenv("SSLKEYLOGFILE");
+    if (keylog_filename) {
+      keylog_file.open(keylog_filename, std::ios_base::app);
+      if (keylog_file) {
+        SSL_CTX_set_keylog_callback(ssl_ctx, keylog_callback);
+      }
+    }
+
 
 #if defined(NGHTTP2_OPENSSL_IS_BORINGSSL) && defined(HAVE_LIBBROTLI)
     if (!SSL_CTX_add_cert_compression_alg(
